@@ -51,7 +51,7 @@ func initializeMetrics(registry prometheus.Registerer) *rateLimitMetrics {
 				Name:      "requests_total",
 				Help:      "Total number of requests that passed through Rate Limit module (both declined & processed).",
 			},
-			[]string{"has_zone"},
+			[]string{"zone", "key"},
 		),
 
 		// rate_limit_process_time_seconds - Time taken to process rate limiting for each request
@@ -63,7 +63,7 @@ func initializeMetrics(registry prometheus.Registerer) *rateLimitMetrics {
 				Help:      "A time taken to process rate limiting for each request.",
 				Buckets:   []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
 			},
-			[]string{"has_zone"},
+			[]string{"zone", "key"},
 		),
 
 		// rate_limit_keys_total - Total number of keys that each RL zone contains
@@ -119,7 +119,19 @@ func (mc *metricsCollector) recordRequest(hasZone bool) {
 	if hasZone {
 		hasZoneStr = "true"
 	}
-	globalMetrics.requestsTotal.WithLabelValues(hasZoneStr).Inc()
+	// Record zone-level aggregate metric (key is empty for zone-level aggregation)
+	globalMetrics.requestsTotal.WithLabelValues(hasZoneStr, "").Inc()
+}
+
+// recordRequestPerKey records a request for a specific zone and key
+func (mc *metricsCollector) recordRequestPerKey(zone, key string) {
+	if !mc.enabled || globalMetrics == nil {
+		return
+	}
+
+	// Record both zone-level aggregate and per-key detailed metrics
+	globalMetrics.requestsTotal.WithLabelValues(zone, "").Inc()  // Zone-level aggregate
+	globalMetrics.requestsTotal.WithLabelValues(zone, key).Inc() // Per-key detailed
 }
 
 // recordDeclinedRequest records a request that was declined due to rate limiting
@@ -128,7 +140,9 @@ func (mc *metricsCollector) recordDeclinedRequest(zone, key string) {
 		return
 	}
 
-	globalMetrics.declinedTotal.WithLabelValues(zone, key).Inc()
+	// Record both zone-level aggregate and per-key detailed metrics
+	globalMetrics.declinedTotal.WithLabelValues(zone, "").Inc()  // Zone-level aggregate
+	globalMetrics.declinedTotal.WithLabelValues(zone, key).Inc() // Per-key detailed
 }
 
 // recordProcessTime records the time taken to process rate limiting
@@ -141,7 +155,19 @@ func (mc *metricsCollector) recordProcessTime(duration time.Duration, hasZone bo
 	if hasZone {
 		hasZoneStr = "true"
 	}
-	globalMetrics.processTime.WithLabelValues(hasZoneStr).Observe(duration.Seconds())
+	// Record zone-level aggregate metric (key is empty for zone-level aggregation)
+	globalMetrics.processTime.WithLabelValues(hasZoneStr, "").Observe(duration.Seconds())
+}
+
+// recordProcessTimePerKey records the time taken to process rate limiting for a specific zone and key
+func (mc *metricsCollector) recordProcessTimePerKey(duration time.Duration, zone, key string) {
+	if !mc.enabled || globalMetrics == nil {
+		return
+	}
+
+	// Record both zone-level aggregate and per-key detailed metrics
+	globalMetrics.processTime.WithLabelValues(zone, "").Observe(duration.Seconds())  // Zone-level aggregate
+	globalMetrics.processTime.WithLabelValues(zone, key).Observe(duration.Seconds()) // Per-key detailed
 }
 
 // updateKeysCount updates the count of keys for a specific zone
