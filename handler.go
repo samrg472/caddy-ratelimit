@@ -190,6 +190,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 
 	var matchedZone bool
+	var lastZoneName, lastKey string
 
 	// iterate the slice, not the map, so the order is deterministic
 	for _, rl := range h.rateLimits {
@@ -199,9 +200,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 		}
 
 		matchedZone = true
+		lastZoneName = rl.zoneName
 
 		// make key for the individual rate limiter in this zone
 		key := repl.ReplaceAll(rl.Key, "")
+		lastKey = key
 		limiter := rl.limitersMap.getOrInsert(key, rl.MaxEvents, time.Duration(rl.Window))
 
 		if h.Distributed == nil {
@@ -209,8 +212,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 			if dur := limiter.When(); dur > 0 {
 				// Record metrics for declined request
 				h.metrics.recordDeclinedRequest(rl.zoneName, key)
-				h.metrics.recordRequest(true)
-				h.metrics.recordProcessTime(time.Since(startTime), true)
+				h.metrics.recordRequestPerKey(rl.zoneName, key)
+				h.metrics.recordProcessTimePerKey(time.Since(startTime), rl.zoneName, key)
 				return h.rateLimitExceeded(w, r, repl, rl.zoneName, key, dur)
 			}
 		} else {
@@ -220,8 +223,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 				if caddyErr, ok := err.(caddyhttp.HandlerError); ok && caddyErr.StatusCode == http.StatusTooManyRequests {
 					h.metrics.recordDeclinedRequest(rl.zoneName, key)
 				}
-				h.metrics.recordRequest(true)
-				h.metrics.recordProcessTime(time.Since(startTime), true)
+				h.metrics.recordRequestPerKey(rl.zoneName, key)
+				h.metrics.recordProcessTimePerKey(time.Since(startTime), rl.zoneName, key)
 				return err
 			}
 		}
@@ -233,9 +236,14 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 		h.metrics.updateKeysCount(rl.zoneName, keysCount)
 	}
 
-	// Record request metrics
-	h.metrics.recordRequest(matchedZone)
-	h.metrics.recordProcessTime(time.Since(startTime), matchedZone)
+	// Record request metrics - use per-key metrics if we matched a zone, otherwise use the general method
+	if matchedZone {
+		h.metrics.recordRequestPerKey(lastZoneName, lastKey)
+		h.metrics.recordProcessTimePerKey(time.Since(startTime), lastZoneName, lastKey)
+	} else {
+		h.metrics.recordRequest(false)
+		h.metrics.recordProcessTime(time.Since(startTime), false)
+	}
 
 	return next.ServeHTTP(w, r)
 }
