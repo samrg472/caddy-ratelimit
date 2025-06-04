@@ -1,4 +1,4 @@
-module github.com/mholt/caddy-ratelimit
+module github.com/chalabi/caddy-ratelimit
 
 go 1.24
 
