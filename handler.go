@@ -196,8 +196,14 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 	// iterate the slice, not the map, so the order is deterministic
 	for _, rl := range h.rateLimits {
 		// ignore rate limit if request doesn't qualify
-		if !rl.matcherSets.AnyMatch(r) {
-			continue
+		{
+			matched, err := rl.matcherSets.AnyMatchWithError(r)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				continue
+			}
 		}
 
 		matchedZone = true
