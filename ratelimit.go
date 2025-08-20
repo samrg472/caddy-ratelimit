@@ -79,10 +79,6 @@ func (rl *RateLimit) provision(ctx caddy.Context, name string) error {
 	return nil
 }
 
-func (rl *RateLimit) permissiveness() float64 {
-	return float64(rl.MaxEvents) / float64(rl.Window)
-}
-
 type rateLimitersMap struct {
 	limiters   map[string]*ringBufferRateLimiter
 	limitersMu sync.Mutex

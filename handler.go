@@ -21,7 +21,6 @@ import (
 	weakrand "math/rand"
 	"net"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
@@ -171,11 +170,6 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		// Record configuration metrics
 		h.metrics.recordConfig(rl.ZoneName, rl.MaxEvents, time.Duration(rl.Window))
 	}
-
-	// sort by tightest rate limit to most permissive (issue #10)
-	sort.Slice(h.rateLimits, func(i, j int) bool {
-		return h.rateLimits[i].permissiveness() > h.rateLimits[j].permissiveness()
-	})
 
 	if h.Jitter < 0 {
 		return fmt.Errorf("jitter must be at least zero")

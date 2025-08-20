@@ -186,3 +186,68 @@ func TestDistinctZonesAndKeys(t *testing.T) {
 	}
 	tester.AssertDeleteResponse("http://localhost:8080/path2", 429, "")
 }
+
+func TestZoneOrdering(t *testing.T) {
+	maxEvents := 10
+	// Admin API must be exposed on port 2999 to match what caddytest.Tester does
+	config := fmt.Sprintf(`{
+	"admin": {"listen": "localhost:2999"},
+	"apps": {
+		"http": {
+			"servers": {
+				"demo": {
+					"listen": [":8080"],
+					"routes": [{
+						"handle": [
+							{
+								"handler": "rate_limit",
+								"rate_limits": [
+									{
+										"zone_name": "zone1",
+										"match": [{"method": ["GET"]}],
+										"key": "{http.request.orig_uri.path}",
+										"window": "60s",
+										"max_events": %d
+									},
+									{
+										"zone_name": "zone2",
+										"match": [{"method": ["GET"]}],
+										"key": "static",
+										"window": "60s",
+										"max_events": %d
+									}
+								],
+								"log_key": true
+							},
+							{
+								"handler": "static_response",
+								"status_code": 200
+							}
+						]
+					}]
+				}
+			}
+		}
+	}
+}`, maxEvents, maxEvents*2)
+
+	initTime()
+
+	tester := caddytest.NewTester(t)
+	tester.InitServer(config, "json")
+
+	// Rate limits for different zones (by method) and keys (by request path)
+	// should be accounted independently
+	for i := 0; i < maxEvents; i++ {
+		tester.AssertGetResponse("http://localhost:8080/permissive1", 200, "")
+	}
+	tester.AssertGetResponse("http://localhost:8080/permissive1", 429, "")
+
+	for i := 0; i < maxEvents; i++ {
+		tester.AssertGetResponse("http://localhost:8080/permissive2", 200, "")
+	}
+	tester.AssertGetResponse("http://localhost:8080/permissive2", 429, "")
+
+	// Check to ensure that the more permissive zone is rate limited.
+	tester.AssertGetResponse("http://localhost:8080/permissive3", 429, "")
+}
