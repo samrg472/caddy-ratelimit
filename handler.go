@@ -92,8 +92,10 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.ctx = ctx
 	h.logger = ctx.Logger(h)
 
-	// Initialize metrics collector
-	h.metrics = newMetricsCollector()
+	appCtx, _ := ctx.App(moduleName)
+	app := appCtx.(*RateLimitApp)
+
+	h.metrics = newMetricsCollector(app)
 
 	// Register metrics with Caddy's internal metrics registry
 	if registry := ctx.GetMetricsRegistry(); registry != nil {

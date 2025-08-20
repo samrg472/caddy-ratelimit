@@ -25,12 +25,41 @@ import (
 )
 
 func init() {
-	httpcaddyfile.RegisterHandlerDirective("rate_limit", parseCaddyfile)
+	httpcaddyfile.RegisterGlobalOption("rate_limit", parseGlobalRateLimitMetrics)
+	httpcaddyfile.RegisterHandlerDirective("rate_limit", parseHandlerDirectives)
 	httpcaddyfile.RegisterDirectiveOrder("rate_limit", "before", "basic_auth")
 }
 
-// parseCaddyfile unmarshals tokens from h into a new Middleware.
-func parseCaddyfile(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
+func parseGlobalRateLimitMetrics(d *caddyfile.Dispenser, _ any) (any, error) {
+	app := new(RateLimitApp)
+
+	// Consume option name
+	d.Next()
+
+	for nesting := d.Nesting(); d.NextBlock(nesting); {
+		switch d.Val() {
+		case "metrics":
+			for nesting := d.Nesting(); d.NextBlock(nesting); {
+				switch d.Val() {
+				case "include_key":
+					app.Metrics.IncludeKey = true
+				default:
+					return nil, d.Errf("unknown option '%s'", d.Val())
+				}
+			}
+		default:
+			return nil, d.Errf("unrecognized subdirective '%s'", d.Val())
+		}
+	}
+
+	return httpcaddyfile.App{
+		Name:  "rate_limit",
+		Value: caddyconfig.JSON(app, nil),
+	}, nil
+}
+
+// parseHandlerDirectives unmarshals tokens from h into a new Middleware.
+func parseHandlerDirectives(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	var h Handler
 	err := h.UnmarshalCaddyfile(helper.Dispenser)
 	return h, err

@@ -26,11 +26,16 @@ func TestMetrics(t *testing.T) {
 	config := fmt.Sprintf(`{
 	"admin": {"listen": "localhost:2999"},
 	"apps": {
+		"rate_limit": {
+			"metrics": {
+				"include_key": true
+			}
+		},
 		"http": {
+			"metrics": {},
 			"servers": {
 				"demo": {
 					"listen": [":8080"],
-					"metrics": {},
 					"routes": [{
 						"handle": [
 							{

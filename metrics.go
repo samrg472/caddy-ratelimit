@@ -101,12 +101,16 @@ func registerMetrics(reg prometheus.Registerer) error {
 
 // metricsCollector holds the metrics collection methods
 type metricsCollector struct {
-	enabled bool
+	globalOpts *RateLimitApp
+	enabled    bool
 }
 
 // newMetricsCollector creates a new metrics collector
-func newMetricsCollector() *metricsCollector {
-	return &metricsCollector{enabled: true}
+func newMetricsCollector(globalOpts *RateLimitApp) *metricsCollector {
+	return &metricsCollector{
+		enabled:    true,
+		globalOpts: globalOpts,
+	}
 }
 
 // recordRequest records a request that passed through the rate limit module
@@ -130,8 +134,10 @@ func (mc *metricsCollector) recordRequestPerKey(zone, key string) {
 	}
 
 	// Record both zone-level aggregate and per-key detailed metrics
-	globalMetrics.requestsTotal.WithLabelValues(zone, "").Inc()  // Zone-level aggregate
-	globalMetrics.requestsTotal.WithLabelValues(zone, key).Inc() // Per-key detailed
+	globalMetrics.requestsTotal.WithLabelValues(zone, "").Inc() // Zone-level aggregate
+	if mc.globalOpts.Metrics.IncludeKey {
+		globalMetrics.requestsTotal.WithLabelValues(zone, key).Inc() // Per-key detailed
+	}
 }
 
 // recordDeclinedRequest records a request that was declined due to rate limiting
@@ -141,8 +147,10 @@ func (mc *metricsCollector) recordDeclinedRequest(zone, key string) {
 	}
 
 	// Record both zone-level aggregate and per-key detailed metrics
-	globalMetrics.declinedTotal.WithLabelValues(zone, "").Inc()  // Zone-level aggregate
-	globalMetrics.declinedTotal.WithLabelValues(zone, key).Inc() // Per-key detailed
+	globalMetrics.declinedTotal.WithLabelValues(zone, "").Inc() // Zone-level aggregate
+	if mc.globalOpts.Metrics.IncludeKey {
+		globalMetrics.declinedTotal.WithLabelValues(zone, key).Inc() // Per-key detailed
+	}
 }
 
 // recordProcessTime records the time taken to process rate limiting
@@ -166,8 +174,10 @@ func (mc *metricsCollector) recordProcessTimePerKey(duration time.Duration, zone
 	}
 
 	// Record both zone-level aggregate and per-key detailed metrics
-	globalMetrics.processTime.WithLabelValues(zone, "").Observe(duration.Seconds())  // Zone-level aggregate
-	globalMetrics.processTime.WithLabelValues(zone, key).Observe(duration.Seconds()) // Per-key detailed
+	globalMetrics.processTime.WithLabelValues(zone, "").Observe(duration.Seconds()) // Zone-level aggregate
+	if mc.globalOpts.Metrics.IncludeKey {
+		globalMetrics.processTime.WithLabelValues(zone, key).Observe(duration.Seconds()) // Per-key detailed
+	}
 }
 
 // updateKeysCount updates the count of keys for a specific zone
