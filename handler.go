@@ -95,7 +95,10 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	appCtx, _ := ctx.App(moduleName)
 	app := appCtx.(*RateLimitApp)
 
-	h.metrics = newMetricsCollector(app)
+	httpAppCtx, _ := ctx.App("http")
+	httpApp := httpAppCtx.(*caddyhttp.App)
+	enableMetrics := httpApp.Metrics != nil
+	h.metrics = newMetricsCollector(enableMetrics, app)
 
 	// Register metrics with Caddy's internal metrics registry
 	if registry := ctx.GetMetricsRegistry(); registry != nil {

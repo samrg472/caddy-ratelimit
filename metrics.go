@@ -106,9 +106,9 @@ type metricsCollector struct {
 }
 
 // newMetricsCollector creates a new metrics collector
-func newMetricsCollector(globalOpts *RateLimitApp) *metricsCollector {
+func newMetricsCollector(enabled bool, globalOpts *RateLimitApp) *metricsCollector {
 	return &metricsCollector{
-		enabled:    true,
+		enabled:    enabled,
 		globalOpts: globalOpts,
 	}
 }
