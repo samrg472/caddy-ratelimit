@@ -34,9 +34,9 @@ func TestCaddyfileRateLimits(t *testing.T) {
 	}
 
 	localhost:8080
-	
+
 	rate_limit {
-		zone zone1 {
+		zone caddyfile_zone1 {
 			match {
 				method GET
 			}

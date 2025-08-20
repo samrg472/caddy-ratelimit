@@ -25,6 +25,9 @@ import (
 
 // RateLimit describes an HTTP rate limit zone.
 type RateLimit struct {
+	// The name of the zone. This name is **required**.
+	ZoneName string `json:"zone_name,omitempty"`
+
 	// Request matchers, which defines the class of requests that are in the RL zone.
 	MatcherSetsRaw caddyhttp.RawMatcherSets `json:"match,omitempty" caddy:"namespace=http.matchers"`
 
@@ -43,8 +46,6 @@ type RateLimit struct {
 	Window caddy.Duration `json:"window,omitempty"`
 
 	matcherSets caddyhttp.MatcherSets
-
-	zoneName string
 
 	limitersMap *rateLimitersMap
 }

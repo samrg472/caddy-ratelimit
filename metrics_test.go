@@ -40,14 +40,15 @@ func TestMetrics(t *testing.T) {
 						"handle": [
 							{
 								"handler": "rate_limit",
-								"rate_limits": {
-									"test_zone": {
+								"rate_limits": [
+									{
+										"zone_name": "test_zone",
 										"match": [{"method": ["GET"]}],
 										"key": "static",
 										"window": "%ds",
 										"max_events": %d
 									}
-								}
+								]
 							},
 							{
 								"handler": "static_response",

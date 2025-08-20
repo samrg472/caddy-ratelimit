@@ -70,14 +70,15 @@ func TestRateLimits(t *testing.T) {
 						"handle": [
 							{
 								"handler": "rate_limit",
-								"rate_limits": {
-									"zone1": {
+								"rate_limits": [
+									{
+										"zone_name": "zone1",
 										"match": [{"method": ["GET"]}],
 										"key": "static",
 										"window": "%ds",
 										"max_events": %d
 									}
-								}
+								]
 							},
 							{
 								"handler": "static_response",
@@ -129,20 +130,22 @@ func TestDistinctZonesAndKeys(t *testing.T) {
 						"handle": [
 							{
 								"handler": "rate_limit",
-								"rate_limits": {
-									"zone1": {
+								"rate_limits": [
+									{
+										"zone_name": "zone1",
 										"match": [{"method": ["GET"]}],
 										"key": "{http.request.orig_uri.path}",
 										"window": "60s",
 										"max_events": %d
 									},
-									"zone2": {
+									{
+										"zone_name": "zone2",
 										"match": [{"method": ["DELETE"]}],
 										"key": "{http.request.orig_uri.path}",
 										"window": "60s",
 										"max_events": %d
 									}
-								}
+								]
 							},
 							{
 								"handler": "static_response",

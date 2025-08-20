@@ -154,14 +154,15 @@ func TestDistributed(t *testing.T) {
 						"handle": [
 							{
 								"handler": "rate_limit",
-								"rate_limits": {
-									"%s": {
+								"rate_limits": [
+									{
+										"zone_name": "%s",
 										"match": [{"method": ["GET"]}],
 										"key": "static",
 										"window": "%ds",
 										"max_events": %d
 									}
-								},
+								],
 								"distributed": {
 									"write_interval": "3600s",
 									"read_interval": "3600s",

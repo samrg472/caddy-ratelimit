@@ -154,10 +154,8 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.Err("a rate limit zone requires both a window and maximum events")
 				}
 
-				if h.RateLimits == nil {
-					h.RateLimits = make(map[string]*RateLimit)
-				}
-				h.RateLimits[zoneName] = &zone
+				zone.ZoneName = zoneName
+				h.RateLimits = append(h.RateLimits, &zone)
 
 			case "distributed":
 				h.Distributed = new(DistributedRateLimiting)

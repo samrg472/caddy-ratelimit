@@ -69,16 +69,17 @@ This is an HTTP handler module, so it can be used wherever `http.handlers` modul
 ```json
 {
   "handler": "rate_limit",
-  "rate_limits": {
-    "<name>": {
+  "rate_limits": [
+    {
+      "zone_name": "<name>",
       "match": [],
       "key": "",
       "window": "",
       "max_events": 0
     },
-    "jitter": 0.0,
-    "sweep_interval": ""
-  },
+  ],
+  "jitter": 0.0,
+  "sweep_interval": "",
   "log_key": false,
   "storage": {},
   "distributed": {
@@ -181,19 +182,21 @@ We also enable distributed rate limiting. By deploying this config to two or mor
               "handle": [
                 {
                   "handler": "rate_limit",
-                  "rate_limits": {
-                    "static_example": {
+                  "rate_limits": [
+                    {
+                      "zone_name": "static_example",
                       "match": [{ "method": ["GET"] }],
                       "key": "static",
                       "window": "1m",
                       "max_events": 100
                     },
-                    "dynamic_example": {
+                    {
+                      "zone_name" : "dynamic_example",
                       "key": "{http.request.remote.host}",
                       "window": "5s",
                       "max_events": 2
                     }
-                  },
+                  ],
                   "distributed": {},
                   "log_key": true
                 },

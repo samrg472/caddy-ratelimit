@@ -47,7 +47,7 @@ func init() {
 type Handler struct {
 	// RateLimits contains the definitions of the rate limit zones, keyed by name.
 	// The name **MUST** be globally unique across all other instances of this handler.
-	RateLimits map[string]*RateLimit `json:"rate_limits,omitempty"`
+	RateLimits []*RateLimit `json:"rate_limits,omitempty"`
 
 	// Percentage jitter on expiration times (example: 0.2 means 20% jitter)
 	Jitter float64 `json:"jitter,omitempty"`
@@ -158,16 +158,18 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	}
 
 	// provision each rate limit and put them in a slice so we can sort them
-	for name, rl := range h.RateLimits {
-		rl.zoneName = name
-		err := rl.provision(ctx, name)
+	for _, rl := range h.RateLimits {
+		if rl.ZoneName == "" {
+			return fmt.Errorf("zone_name is empty or missing")
+		}
+		err := rl.provision(ctx, rl.ZoneName)
 		if err != nil {
-			return fmt.Errorf("setting up rate limit %s: %v", name, err)
+			return fmt.Errorf("setting up rate limit %s: %v", rl.ZoneName, err)
 		}
 		h.rateLimits = append(h.rateLimits, rl)
 
 		// Record configuration metrics
-		h.metrics.recordConfig(name, rl.MaxEvents, time.Duration(rl.Window))
+		h.metrics.recordConfig(rl.ZoneName, rl.MaxEvents, time.Duration(rl.Window))
 	}
 
 	// sort by tightest rate limit to most permissive (issue #10)
@@ -205,7 +207,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 		}
 
 		matchedZone = true
-		lastZoneName = rl.zoneName
+		lastZoneName = rl.ZoneName
 
 		// make key for the individual rate limiter in this zone
 		key := repl.ReplaceAll(rl.Key, "")
@@ -216,20 +218,20 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 			// internal rate limiter only
 			if dur := limiter.When(); dur > 0 {
 				// Record metrics for declined request
-				h.metrics.recordDeclinedRequest(rl.zoneName, key)
-				h.metrics.recordRequestPerKey(rl.zoneName, key)
-				h.metrics.recordProcessTimePerKey(time.Since(startTime), rl.zoneName, key)
-				return h.rateLimitExceeded(w, r, repl, rl.zoneName, key, dur)
+				h.metrics.recordDeclinedRequest(rl.ZoneName, key)
+				h.metrics.recordRequestPerKey(rl.ZoneName, key)
+				h.metrics.recordProcessTimePerKey(time.Since(startTime), rl.ZoneName, key)
+				return h.rateLimitExceeded(w, r, repl, rl.ZoneName, key, dur)
 			}
 		} else {
 			// distributed rate limiting; add last known state of other instances
-			if err := h.distributedRateLimiting(w, r, repl, limiter, key, rl.zoneName); err != nil {
+			if err := h.distributedRateLimiting(w, r, repl, limiter, key, rl.ZoneName); err != nil {
 				// Record metrics for declined request if it was a rate limit error
 				if caddyErr, ok := err.(caddyhttp.HandlerError); ok && caddyErr.StatusCode == http.StatusTooManyRequests {
-					h.metrics.recordDeclinedRequest(rl.zoneName, key)
+					h.metrics.recordDeclinedRequest(rl.ZoneName, key)
 				}
-				h.metrics.recordRequestPerKey(rl.zoneName, key)
-				h.metrics.recordProcessTimePerKey(time.Since(startTime), rl.zoneName, key)
+				h.metrics.recordRequestPerKey(rl.ZoneName, key)
+				h.metrics.recordProcessTimePerKey(time.Since(startTime), rl.ZoneName, key)
 				return err
 			}
 		}
@@ -238,7 +240,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 		rl.limitersMap.limitersMu.Lock()
 		keysCount := len(rl.limitersMap.limiters)
 		rl.limitersMap.limitersMu.Unlock()
-		h.metrics.updateKeysCount(rl.zoneName, keysCount)
+		h.metrics.updateKeysCount(rl.ZoneName, keysCount)
 	}
 
 	// Record request metrics - use per-key metrics if we matched a zone, otherwise use the general method
