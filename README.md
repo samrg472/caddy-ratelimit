@@ -158,6 +158,25 @@ Like with the JSON config, all subdirectives are optional and have sensible defa
 
 Multiple zones can be defined. Distributed RL can be enabled just by specifying `distributed` if you want to use its default settings.
 
+#### Metrics
+
+Metrics can be recorded and are tracked per-zone.
+
+An option can be enabled to enable per-key and per-zone tracking. However, this may lead to a high cardinality when using dynamic keys that may present performance issues.
+
+```caddy
+# Required to enable metrics tracking for the rate_limit module.
+metrics {
+  per_host
+}
+
+rate_limit {
+  metrics {
+    include_key
+  }
+}
+```
+
 ## Examples
 
 We'll show an equivalent JSON and Caddyfile example that defines two rate limit zones: `static_example` and `dynamic_example`.
