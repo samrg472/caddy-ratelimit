@@ -69,6 +69,10 @@ type Handler struct {
 	// Defaults to `false` because keys can contain sensitive information.
 	LogKey bool `json:"log_key,omitempty"`
 
+	// DisableMetrics, if true, disables Prometheus metrics for this rate_limit
+	// handler even when Caddy global metrics are enabled.
+	DisableMetrics bool `json:"disable_metrics,omitempty"`
+
 	rateLimits []*RateLimit
 	storage    certmagic.Storage
 	random     *weakrand.Rand
@@ -100,10 +104,16 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.metrics = newMetricsCollector(enableMetrics, app)
 
 	// Register metrics with Caddy's internal metrics registry
-	if registry := ctx.GetMetricsRegistry(); registry != nil {
+	if h.DisableMetrics {
+		h.metrics.enabled = false
+	} else if !h.metrics.enabled {
+		// global metrics are not enabled
+	} else if registry := ctx.GetMetricsRegistry(); registry != nil {
 		if err := registerMetrics(registry); err != nil {
 			h.logger.Warn("failed to register rate limit metrics", zap.Error(err))
 			h.metrics.enabled = false
+		} else {
+			h.logger.Info("rate limit metrics enabled")
 		}
 	} else {
 		h.logger.Warn("metrics registry not available, disabling metrics")
@@ -156,7 +166,8 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		go h.syncDistributed(ctx)
 	}
 
-	// provision each rate limit and put them in a slice so we can sort them
+	// provision each rate limit and put them in a slice so the order
+	// defined in the configuration is preserved
 	for _, rl := range h.RateLimits {
 		if rl.ZoneName == "" {
 			return fmt.Errorf("zone_name is empty or missing")
@@ -168,7 +179,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		h.rateLimits = append(h.rateLimits, rl)
 
 		// Record configuration metrics
-		h.metrics.recordConfig(rl.ZoneName, rl.MaxEvents, time.Duration(rl.Window))
+		h.metrics.recordConfig(rl.ZoneName, rl.MaxEvents, time.Duration(rl.Window), rl.IPv4Prefix, rl.IPv6Prefix)
 	}
 
 	if h.Jitter < 0 {
@@ -211,6 +222,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 
 		// make key for the individual rate limiter in this zone
 		key := repl.ReplaceAll(rl.Key, "")
+		key = applyNetworkPrefix(key, rl.IPv4Prefix, rl.IPv6Prefix)
 		lastKey = key
 		limiter := rl.limitersMap.getOrInsert(key, rl.MaxEvents, time.Duration(rl.Window))
 
@@ -253,6 +265,40 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 	}
 
 	return next.ServeHTTP(w, r)
+}
+
+// applyNetworkPrefix masks an IP address key to a network prefix if the
+// corresponding prefix length is configured. If the key is not a valid IP
+// address, or the prefix length for that IP version is 0 (unconfigured),
+// the key is returned unchanged.
+func applyNetworkPrefix(key string, ipv4Prefix, ipv6Prefix int) string {
+	if ipv4Prefix == 0 && ipv6Prefix == 0 {
+		return key
+	}
+
+	ip := net.ParseIP(key)
+	if ip == nil {
+		return key
+	}
+
+	var prefixLen, maxBits int
+	if ip.To4() != nil {
+		if ipv4Prefix == 0 {
+			return key
+		}
+		prefixLen = ipv4Prefix
+		maxBits = 32
+	} else {
+		if ipv6Prefix == 0 {
+			return key
+		}
+		prefixLen = ipv6Prefix
+		maxBits = 128
+	}
+
+	mask := net.CIDRMask(prefixLen, maxBits)
+	network := net.IPNet{IP: ip.Mask(mask), Mask: mask}
+	return network.String()
 }
 
 func (h *Handler) rateLimitExceeded(w http.ResponseWriter, r *http.Request, repl *caddy.Replacer, zoneName string, key string, wait time.Duration) error {

@@ -2,8 +2,6 @@
 
 This module implements both internal and distributed HTTP rate limiting. Requests can be rejected after a specified rate limit is hit.
 
-**WORK IN PROGRESS:** Please note that this module is still unfinished and may have bugs. Please try it out and file bug reports - thanks!
-
 > [!NOTE]
 > This is not an official repository of the [Caddy Web Server](https://github.com/caddyserver) organization.
 
@@ -24,6 +22,8 @@ This module implements both internal and distributed HTTP rate limiting. Request
 - Optional jitter for retry times
 - Configurable memory management
 - Distributed rate limiting across a cluster
+- Network-prefix (subnet) grouping for IP-based keys
+- Prometheus metrics
 - Caddyfile support
 
 **PLANNED:**
@@ -68,33 +68,40 @@ This is an HTTP handler module, so it can be used wherever `http.handlers` modul
 
 ```json
 {
-  "handler": "rate_limit",
-  "rate_limits": [
-    {
-      "zone_name": "<name>",
-      "match": [],
-      "key": "",
-      "window": "",
-      "max_events": 0
-    },
-  ],
-  "jitter": 0.0,
-  "sweep_interval": "",
-  "log_key": false,
-  "storage": {},
-  "distributed": {
-    "write_interval": "",
-    "read_interval": "",
-    "purge_age": ""
-  }
+	"handler": "rate_limit",
+	"rate_limits": [
+		{
+			"zone_name": "<name>",
+			"match": [],
+			"key": "",
+			"window": "",
+			"max_events": 0,
+			"ipv4_prefix": 0,
+			"ipv6_prefix": 0
+		}
+	],
+	"jitter": 0.0,
+	"sweep_interval": "",
+	"log_key": false,
+	"disable_metrics": false,
+	"storage": {},
+	"distributed": {
+		"write_interval": "",
+		"read_interval": "",
+		"purge_age": ""
+	}
 }
 ```
 
 All fields are optional, but to be useful, you'll need to define at least one zone, and a zone requires `window` and `max_events` to be set. Keys can be static (no placeholders) or dynamic (with placeholders). Matchers can be used to filter requests that apply to a zone. Replace `<name>` with your RL zone's name.
 
+The `ipv4_prefix` and `ipv6_prefix` fields allow grouping rate limit keys by network subnet when the key resolves to an IP address. For example, setting `ipv6_prefix` to `64` will mask all IPv6 addresses to their `/64` network prefix, so all addresses within the same `/64` share a single rate limit bucket. This is useful for preventing abuse from clients cycling through many addresses within an IPv6 prefix. Each address family is configured independently; when a prefix is not set (or `0`), addresses of that family are treated individually as usual.
+
 To enable distributed RL, set `distributed` to a non-null object. The default read and write intervals are 5s, but you should tune these for your individual deployments.
 
 To log the key when a rate limit is hit, set `log_key` to `true`.
+
+To disable Prometheus metrics for this handler even when Caddy global metrics are enabled, set `disable_metrics` to `true`. This is useful if you want to use Caddy's metrics but are not interested in the rate limit module's metrics and want to avoid unnecessary Prometheus storage usage.
 
 Storage customizes the storage module that is used. Like normal Caddy convention, all instances with the same storage configuration are considered to be part of a cluster.
 
@@ -138,9 +145,11 @@ rate_limit {
 		match {
 			<matchers>
 		}
-		key    <string>
-		window <duration>
-		events <max_events>
+		key         <string>
+		window      <duration>
+		events      <max_events>
+		ipv4_prefix <bits>
+		ipv6_prefix <bits>
 	}
 	distributed {
 		read_interval  <duration>
@@ -148,6 +157,7 @@ rate_limit {
 		purge_age <duration>
 	}
 	log_key
+	disable_metrics
 	storage <module...>
 	jitter  <percent>
 	sweep_interval <duration>
@@ -160,20 +170,23 @@ Multiple zones can be defined. Distributed RL can be enabled just by specifying 
 
 #### Metrics
 
-Metrics can be recorded and are tracked per-zone.
+Prometheus metrics are recorded when Caddy's global metrics are enabled. By default, metrics are aggregated per zone.
 
-An option can be enabled to enable per-key and per-zone tracking. However, this may lead to a high cardinality when using dynamic keys that may present performance issues.
+The `rate_limit` global option can additionally enable per-key tracking. Be careful with this when keys are dynamic: per-key series can have high cardinality, which may cause performance issues.
 
 ```caddy
-# Required to enable metrics tracking for the rate_limit module.
-metrics {
-  per_host
-}
+{
+	# Required to enable metrics for Caddy, including the rate_limit module.
+	metrics {
+		per_host
+	}
 
-rate_limit {
-  metrics {
-    include_key
-  }
+	# Optional: also record per-key metrics (not just per-zone aggregates).
+	rate_limit {
+		metrics {
+			include_key
+		}
+	}
 }
 ```
 
@@ -257,4 +270,40 @@ rate_limit {
 }
 
 respond "I'm behind the rate limiter!"
+```
+
+### Network prefix rate limiting
+
+When rate limiting by client IP, an attacker with access to an IPv6 prefix (commonly a `/64`) can cycle through many addresses to bypass per-IP rate limits. The `ipv6_prefix` option solves this by grouping all addresses within the same network into a single rate limit bucket.
+
+In this example, all IPv6 clients within the same `/64` network share one rate limit bucket, while each IPv4 client is rate limited individually:
+
+#### JSON
+
+```json
+{
+	"handler": "rate_limit",
+	"rate_limits": [
+		{
+			"zone_name": "per_network",
+			"key": "{http.request.remote.host}",
+			"window": "1m",
+			"max_events": 100,
+			"ipv6_prefix": 64
+		}
+	]
+}
+```
+
+#### Caddyfile
+
+```
+rate_limit {
+	zone per_network {
+		key         {remote_host}
+		events      100
+		window      1m
+		ipv6_prefix 64
+	}
+}
 ```
